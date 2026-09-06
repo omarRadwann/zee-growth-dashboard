@@ -109,8 +109,8 @@ function Picker({
     </label>
   );
 }
-type Props = { data: ReportData; onConnect: () => void };
-export default function ReportExplorer({ data, onConnect }: Props) {
+type Props = { data: ReportData; onConnect: () => void; mode?: string };
+export default function ReportExplorer({ data, onConnect, mode }: Props) {
   const [imports, setImports] = useState<any[]>([]),
     [active, setActive] = useState(''),
     [error, setError] = useState(''),
@@ -129,8 +129,13 @@ export default function ReportExplorer({ data, onConnect }: Props) {
     () =>
       ['ads', 'store', 'seo']
         .map((k) => reportFromFeed(data, k))
-        .filter(Boolean),
-    [data],
+        .filter(Boolean)
+        .map((r) => ({
+          ...r,
+          historical: mode === 'import',
+          feedSnapshot: mode === 'import',
+        })),
+    [data, mode],
   );
   const reports: any[] = [...feeds, ...imports];
   const report: any = reports.find((r) => r.id === active) || reports[0];
@@ -374,11 +379,38 @@ export default function ReportExplorer({ data, onConnect }: Props) {
           </p>
           <div className="rx-setup-path">
             <strong>Why the charts are empty</strong>
-            <p>This public website does not contain private ZEE sales or ad spend. A signed-in reporting connection must supply them.</p>
+            <p>
+              This public website does not contain private ZEE sales or ad
+              spend. A signed-in reporting connection must supply them.
+            </p>
             <ol>
-              <li><b>Store connection</b><span>The private bridge is installed on staging for validation. Choose Connect sources → Staging, then allow reporting in the WordPress window. Production has not been connected.</span></li>
-              <li><b>Google Ads automation</b><span>The reporting account was verified as Read only on 6 September 2026. An Ads administrator must install and authorize the reporting script. Viewing reports alone does not create an automatic feed.</span></li>
-              <li><b>Organic search and enquiries</b><span>Search Console, GA4, forms, WhatsApp and call tracking still need their own authenticated connections. An unconnected source is missing—not zero.</span></li>
+              <li>
+                <b>Store connection</b>
+                <span>
+                  The existing bridge is installed on production and staging.
+                  Choose Connect sources → Production, sign in on WordPress and
+                  explicitly allow reporting. Its installation is not proof that
+                  the sales feed is verified. Staging figures are test data
+                  only.
+                </span>
+              </li>
+              <li>
+                <b>Google Ads automation</b>
+                <span>
+                  The reporting account was verified as Read only on 6 September
+                  2026. An Ads administrator must install and authorize the
+                  reporting script. Viewing reports alone does not create an
+                  automatic feed.
+                </span>
+              </li>
+              <li>
+                <b>Organic search and enquiries</b>
+                <span>
+                  Search Console, GA4, forms, WhatsApp and call tracking still
+                  need their own authenticated connections. An unconnected
+                  source is missing—not zero.
+                </span>
+              </li>
             </ol>
             <Button onClick={onConnect}>Open private connection</Button>
           </div>
@@ -400,7 +432,9 @@ export default function ReportExplorer({ data, onConnect }: Props) {
             <article>
               <b>WooCommerce</b>
               <p>
-                Daily orders, recorded payments, cancellations and refunds through the private bridge. Product breakdowns require a separate aggregate export.
+                Daily orders, recorded payments, cancellations and refunds
+                through the private bridge. Product breakdowns require a
+                separate aggregate export.
               </p>
               <a
                 href="https://zee-official.com/wp-admin/admin.php?page=wc-admin&path=%2Fanalytics%2Frevenue"
@@ -454,7 +488,7 @@ export default function ReportExplorer({ data, onConnect }: Props) {
                   ? 'Imported report · not live'
                   : 'Connected report'}
             </span>
-            {report.historical && (
+            {report.historical && !report.feedSnapshot && (
               <Button
                 variant="ghost"
                 onClick={() => {
@@ -474,7 +508,11 @@ export default function ReportExplorer({ data, onConnect }: Props) {
             </strong>
             <span>
               {report.rows.length.toLocaleString()} source rows ·{' '}
-              {report.historical ? 'Opened' : 'Source refreshed'}{' '}
+              {report.feedSnapshot
+                ? 'Snapshot captured'
+                : report.historical
+                  ? 'Opened'
+                  : 'Source refreshed'}{' '}
               {new Date(report.loadedAt).toLocaleString('en-GB', {
                 timeZone: 'Africa/Cairo',
               })}{' '}
@@ -489,6 +527,13 @@ export default function ReportExplorer({ data, onConnect }: Props) {
                 ? 'Currency was not supplied; monetary values have no assumed currency.'
                 : ''}
             </p>
+            {report.kind === 'seo' && (
+              <p>
+                Search Console daily dates use Pacific Time. They are not the
+                same 24-hour window as Cairo store dates. Query totals can
+                exclude anonymized terms.
+              </p>
+            )}
           </div>
           <section className="rx-filters" aria-label="Report filters">
             <div className="rx-filter-title">

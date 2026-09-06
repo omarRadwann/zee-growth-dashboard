@@ -31,6 +31,12 @@ The snippet illustrates shape only, not complete reporting coverage. In a real p
 
 `seo` is one row per day: `clicks`, `impressions`, `position`. Position is the source's impression-weighted daily value; the dashboard weights again by impressions across days. Country/search-type filters must remain consistent in the exporting adapter.
 
+Daily WooCommerce and SEO snapshots must contain every declared date, including verified zero days. The frontend rejects gaps instead of inventing zero activity. Daily Ads rows may remain sparse only under the complete-query rule above.
+
+The top-level timezone is the workspace clock and the WooCommerce/events calendar. Search Console daily dates retain Google's native Pacific Time calendar; they must not be shifted or relabelled Cairo dates. Disclose the native calendar, filters and any rounding in `sources.seo.note`. Daily position transcribed from the UI is rounded; derived period position is consequently approximate. For manual snapshots, identify `lastSync` as capture time in the note rather than claiming it is Google's processing timestamp.
+
+Bridge transport may include a separate `progress` object with `completeDays`, `targetDays`, `workingDate`, `error`, and `wpCronDisabled`. The frontend validates and bounds it independently; it is not business performance data and is not treated as proof of reliable server scheduling.
+
 `events` contains unique `id`, ISO `at`, allowlisted `type`, `count` and `channel`. A source must explicitly declare `sources.events.types`. Untracked types stay unavailable. Records can be aggregate buckets if their labels/timestamps correctly represent those buckets; do not label a daily bucket as an individual real-time event. Use stable event IDs that contain no direct customer identifiers.
 
 ## Server-to-server signature

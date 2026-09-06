@@ -1,0 +1,123 @@
+.dh-panel {
+  margin-block: 22px;
+}
+.dh-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-block: 22px;
+}
+.dh-source {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 20px;
+  min-width: 0;
+  background: var(--card);
+}
+.dh-source-title {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 10px;
+  flex-wrap: wrap;
+}
+.dh-source p,
+.dh-source li,
+.dh-foot {
+  font-size: 14px;
+  line-height: 1.65;
+}
+.dh-source ol {
+  list-style: decimal;
+  padding-inline-start: 22px;
+  margin-top: 12px;
+}
+.dh-source li + li {
+  margin-top: 9px;
+}
+.dh-source dl {
+  margin-block: 16px;
+  font-size: 14px;
+}
+.dh-source dl div {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding-block: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.dh-source dt {
+  color: var(--muted-foreground);
+}
+.dh-source dd {
+  margin: 0;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+.dh-foot {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+  margin-top: 18px;
+}
+.dh-foot svg {
+  flex-shrink: 0;
+  margin-top: 4px;
+}
+.connection-strip {
+  background: #e8f0f8;
+  border: 1px solid #c4d7e9;
+  padding: 18px 20px;
+  border-radius: 12px;
+  margin-block: 18px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.connection-strip p {
+  color: #385269;
+  font-size: 14px;
+  max-width: 75ch;
+}
+.connection-strip strong {
+  color: #15334c;
+}
+.sync-progress {
+  min-width: 240px;
+  flex: 1;
+  max-width: 450px;
+}
+.insight-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-block: 20px;
+}
+.insight-grid article {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 18px;
+  background: white;
+}
+.insight-grid p {
+  font-size: 14px;
+  margin-top: 10px;
+}
+.insight-change {
+  font-size: 28px;
+  font-weight: 650;
+  color: var(--primary);
+}
+@media (max-width: 760px) {
+  .dh-grid,
+  .insight-grid {
+    grid-template-columns: 1fr;
+  }
+  .sync-progress {
+    min-width: 0;
+    width: 100%;
+  }
+}

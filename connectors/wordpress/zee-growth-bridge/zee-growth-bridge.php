@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZEE Growth Private Reporting Bridge
  * Description: Read-only WooCommerce aggregates and signed reporting imports for the ZEE GitHub dashboard. Stage and reconcile before production use.
- * Version: 0.2.0
+ * Version: 0.3.0
  * Requires PHP: 8.1
  * Author: ZEE
  */
@@ -17,6 +17,7 @@ final class Zee_Growth_Bridge {
     public static function boot() {
         add_action('admin_menu', [__CLASS__, 'menu']);
         add_action('wp_ajax_zee_growth_snapshot', [__CLASS__, 'ajax_snapshot']);
+        add_action('wp_ajax_zee_growth_advance', [__CLASS__, 'ajax_advance']);
         add_action('rest_api_init', [__CLASS__, 'routes']);
         add_action('zee_growth_refresh_woo', [__CLASS__, 'refresh_woo']);
         add_action('zee_growth_daily_cleanup', [__CLASS__, 'cleanup']);
@@ -89,7 +90,7 @@ final class Zee_Growth_Bridge {
           const nonce = <?php echo wp_json_encode(wp_create_nonce('zee-growth-read')); ?>;
           const endpoint = <?php echo wp_json_encode(admin_url('admin-ajax.php')); ?>;
           const status = document.getElementById('zee-status');
-          let allowed = false, busy = false;
+          let allowed = false, busy = false, advancing = false, advanceTimer;
           function send(message) { if (window.opener && session) window.opener.postMessage({...message, session}, target); }
           async function snapshot() {
             if (!allowed || busy) return;
@@ -99,16 +100,31 @@ final class Zee_Growth_Bridge {
               if (!response.ok) throw new Error('Your session expired, permission changed, or the store could not refresh. Reconnect from the dashboard.');
               const result = await response.json();
               if (!result.success) throw new Error(result.data?.message || 'Reporting is not ready.');
-              send({type:'zee-growth-data', payload:result.data});
-              status.textContent = 'Sharing authorized aggregate data. Last request: ' + new Date().toLocaleTimeString();
+              send({type:'zee-growth-data', payload:result.data, progress:result.data.progress});
+              const p = result.data.progress;
+              status.textContent = 'Sharing private reports. Store history: ' + p.completeDays + ' of ' + p.targetDays + ' days. ' + (p.error || '') + ' Last request: ' + new Date().toLocaleTimeString();
             } catch(error) { status.textContent = error.message; send({type:'zee-growth-error', message:error.message}); }
             finally { busy = false; }
           }
+          async function advance() {
+            if (!allowed || advancing) return;
+            advancing = true;
+            let next = 60000;
+            try {
+              const response = await fetch(endpoint, {method:'POST', credentials:'same-origin', cache:'no-store', body:new URLSearchParams({action:'zee_growth_advance', _ajax_nonce:nonce})});
+              if (!response.ok) throw new Error('Background refresh needs a valid WordPress session.');
+              const result = await response.json();
+              if (!result.success) throw new Error('Background refresh was not accepted.');
+              if (result.data.completeDays < result.data.targetDays) next = 8000;
+              await snapshot();
+            } catch(error) { status.textContent = error.message; }
+            finally { advancing = false; if (allowed) advanceTimer = setTimeout(advance, next); }
+          }
           document.getElementById('zee-authorize').onclick = () => {
             if (!window.opener || !/^[a-f0-9-]{36}$/i.test(session)) { status.textContent = 'Reopen this window using Connect data on the dashboard.'; return; }
-            allowed = true; send({type:'zee-growth-ready'}); snapshot();
+            allowed = true; clearTimeout(advanceTimer); send({type:'zee-growth-ready'}); snapshot(); advance();
           };
-          document.getElementById('zee-stop').onclick = () => { allowed = false; status.textContent = 'Sharing stopped. Close this window to finish.'; send({type:'zee-growth-error', message:'Sharing was stopped in WordPress.'}); };
+          document.getElementById('zee-stop').onclick = () => { allowed = false; clearTimeout(advanceTimer); status.textContent = 'Sharing stopped. Close this window to finish.'; send({type:'zee-growth-error', message:'Sharing was stopped in WordPress.'}); };
           window.addEventListener('message', e => { if (e.origin === target && e.source === window.opener && e.data?.session === session && e.data.type === 'zee-growth-request') snapshot(); });
         })();
         </script>
@@ -137,17 +153,35 @@ final class Zee_Growth_Bridge {
     private static function empty_day($date) {
         return ['date'=>$date, 'orders'=>0, 'paidOrders'=>0, 'recordedPaidValue'=>0.0, 'cancelledOrders'=>0, 'completedOrders'=>0, 'refundValue'=>0.0];
     }
+    public static function progress() {
+        $done = 0; $oldest = time();
+        foreach (self::dates() as $date) {
+            $day = get_option('zee_growth_day_' . $date);
+            if (is_array($day)) { $done++; $oldest = min($oldest, $day['synced']); }
+        }
+        $job = get_option('zee_growth_woo_job');
+        return ['completeDays'=>$done, 'targetDays'=>self::DAYS + 1, 'workingDate'=>is_array($job) ? $job['date'] : null, 'workingPage'=>is_array($job) ? $job['page'] : null, 'oldestDayCheck'=>$done ? gmdate('c', $oldest) : null, 'error'=>sanitize_text_field(get_option('zee_growth_woo_error', '')), 'nextCron'=>wp_next_scheduled('zee_growth_refresh_woo'), 'wpCronDisabled'=>defined('DISABLE_WP_CRON') && DISABLE_WP_CRON];
+    }
+    public static function ajax_advance() {
+        if (!current_user_can(self::CAP)) { wp_send_json_error(['message'=>'Reporting permission required.'], 403); }
+        check_ajax_referer('zee-growth-read');
+        nocache_headers();
+        header('Cache-Control: private, no-store, max-age=0');
+        // Only approved reporting sessions can advance a bounded job. Never run an unbounded scan.
+        self::refresh_woo();
+        wp_send_json_success(self::progress());
+    }
     private static function publish_woo() {
-        $rows = []; $oldest_sync = time();
+        $rows = []; $latest_sync = 0;
         foreach (self::dates() as $date) {
             $day = get_option('zee_growth_day_' . $date);
             if (!is_array($day)) { break; }
             $rows[] = $day['row'];
-            $oldest_sync = min($oldest_sync, $day['synced']);
+            $latest_sync = max($latest_sync, $day['synced']);
         }
         if (!$rows) { return; }
         $rows = array_reverse($rows);
-        update_option('zee_growth_woo_snapshot', ['source'=>['status'=>'connected', 'lastSync'=>gmdate('c', $oldest_sync), 'from'=>$rows[0]['date'], 'to'=>$rows[count($rows)-1]['date'], 'note'=>'Reconciled created-date cohorts, current status. Freshness is the oldest included day check. Event-driven updates and six-hour reconciliation require server cron. Paid value is gross before refunds, not settled cash.'], 'rows'=>$rows], false);
+        update_option('zee_growth_woo_snapshot', ['source'=>['status'=>'connected', 'lastSync'=>gmdate('c', $latest_sync), 'from'=>$rows[0]['date'], 'to'=>$rows[count($rows)-1]['date'], 'note'=>'Created-date cohorts maintained by order-change hooks and six-hour day reconciliation when cron runs. Last sync is the latest successful day update; oldest day check is shown separately. Paid value is gross before refunds, not settled cash.'], 'rows'=>$rows], false);
     }
     public static function refresh_woo() {
         if (!function_exists('wc_get_orders')) { update_option('zee_growth_woo_error', 'WooCommerce is not active.', false); return; }
@@ -159,6 +193,8 @@ final class Zee_Growth_Bridge {
             return;
         }
         try {
+            if ((int) get_option('zee_growth_last_attempt', 0) > time() - 3) { self::schedule_refresh(); return; }
+            update_option('zee_growth_last_attempt', time(), false);
             $dates = self::dates();
             $state = get_option('zee_growth_woo_job');
             if (!is_array($state) || !in_array($state['date'], $dates, true)) {
@@ -226,6 +262,7 @@ final class Zee_Growth_Bridge {
         $woo = get_option('zee_growth_woo_snapshot');
         if (is_array($woo)) { $data['sources']['woo'] = $woo['source']; $data['commerce'] = $woo['rows']; }
         if (!$woo || strtotime($woo['source']['lastSync']) < time() - 300) { self::schedule_refresh(); }
+        $data['progress'] = self::progress();
         wp_send_json_success($data);
     }
     public static function routes() {

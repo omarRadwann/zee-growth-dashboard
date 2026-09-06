@@ -2,6 +2,13 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import ReportExplorer from './report-explorer';
+import DataHealth from './data-health';
+import {
+  safeProgress,
+  reviewInsights,
+  latestWindow,
+} from '@/lib/readiness.mjs';
+import { Progress } from '@/components/ui/progress';
 import { registerReportingTools, type ModelContext } from '@/lib/agent-tools';
 import {
   Activity,
@@ -267,7 +274,9 @@ export default function Dashboard() {
   const [notice, setNotice] = useState('');
   const [menu, setMenu] = useState(false);
   const [bridgeState, setBridgeState] = useState('Not connected');
-  const [bridgeOrigin, setBridgeOrigin] = useState(BRIDGE_ORIGINS[0]);
+  const [bridgeOrigin, setBridgeOrigin] = useState(BRIDGE_ORIGINS[1]);
+  const [syncProgress, setSyncProgress] =
+    useState<ReturnType<typeof safeProgress>>(null);
   const [clock, setClock] = useState(Date.now());
   const [notes, setNotes] = useState<Note[]>([]);
   const [noteTitle, setNoteTitle] = useState('');
@@ -430,6 +439,7 @@ export default function Dashboard() {
       if (event.data.type !== 'zee-growth-data') return;
       try {
         const clean = validateData(event.data.payload);
+        setSyncProgress(safeProgress(event.data.progress));
         setData(clean);
         setMode('bridge');
         setBridgeState('Connected · refresh every minute');
@@ -459,6 +469,7 @@ export default function Dashboard() {
     lastResponse.current = 0;
     setData(emptyData());
     setMode('empty');
+    setSyncProgress(null);
     setBridgeState('Not connected');
     setCampaign('all');
     setNotice(
@@ -484,6 +495,12 @@ export default function Dashboard() {
       disconnect();
       setData(parsed);
       setMode(parsed.environment === 'example' ? 'example' : 'import');
+      if (
+        parsed.sources.seo.status === 'connected' &&
+        !parsed.ads.length &&
+        !parsed.commerce.length
+      )
+        go('seo');
       const dates = SOURCES.map((s) => parsed.sources[s]?.to)
         .filter((date): date is string => Boolean(date))
         .sort();
@@ -519,7 +536,7 @@ export default function Dashboard() {
         : 'Popup blocked — allow this connection window',
     );
     setNotice(
-      'The staging connector is installed for validation. Production is awaiting approval. Sign in on ZEE’s own website; never enter its password here.',
+      'The existing bridge is installed. Sign in on the selected ZEE website and explicitly allow this tab to view reports. No plugin is installed by this button.',
     );
   }
   function saveNote(event: React.FormEvent) {
@@ -567,6 +584,17 @@ export default function Dashboard() {
           delta(r.after, r.before) ?? 'No baseline',
         ]),
       ]),
+    );
+  }
+  function exportSnapshot() {
+    if (!connected) return;
+    download(
+      `ZEE-private-${data.environment}-${day()}.json`,
+      JSON.stringify(data, null, 2),
+      'application/json',
+    );
+    setNotice(
+      'Private snapshot downloaded. It contains business totals: share only with approved teammates. It is not uploaded to GitHub.',
     );
   }
   function comparisonRows() {
@@ -948,6 +976,69 @@ export default function Dashboard() {
               </button>
             </div>
           )}
+          <section
+            className="connection-strip"
+            aria-label="Reporting connection status"
+          >
+            <div>
+              <strong>
+                {mode === 'empty'
+                  ? 'Connect your accounts to see real results'
+                  : mode === 'example'
+                    ? 'Example numbers — not ZEE performance'
+                    : mode === 'import'
+                      ? 'Private snapshot — not an automatic live feed'
+                      : bridgeState}
+              </strong>
+              <p>
+                {mode === 'empty'
+                  ? 'The website is public; your business data is not. Use the existing private bridge, or open your real CSV exports in Performance explorer.'
+                  : `${connected} of 4 source groups received. Check coverage and the source update time before comparing results.`}
+              </p>
+            </div>
+            <div className="inline-actions">
+              <Button variant="outline" onClick={() => file.current?.click()}>
+                <Upload />
+                Open private snapshot
+              </Button>
+              <Button variant="outline" onClick={() => go('connections')}>
+                Check coverage & blockers <ArrowRight />
+              </Button>
+              <Button onClick={() => setConnectionOpen(true)}>
+                <Link2 />
+                {mode === 'bridge'
+                  ? 'Manage connection'
+                  : 'Connect private data'}
+              </Button>
+            </div>
+            {mode === 'bridge' && syncProgress && (
+              <div className="sync-progress" role="status">
+                <p>
+                  <strong>
+                    Store history: {syncProgress.completeDays} /{' '}
+                    {syncProgress.targetDays} days prepared
+                  </strong>
+                  {syncProgress.workingDate
+                    ? ` · Reading ${syncProgress.workingDate}`
+                    : ''}
+                </p>
+                <Progress
+                  value={
+                    (100 * syncProgress.completeDays) / syncProgress.targetDays
+                  }
+                  aria-label="Store history collection"
+                />
+                {syncProgress.error && <p role="alert">{syncProgress.error}</p>}
+                {syncProgress.wpCronDisabled && (
+                  <p>
+                    WordPress automatic page-load scheduling is disabled.
+                    Mostafa must verify server scheduling for updates while this
+                    connection is closed.
+                  </p>
+                )}
+              </div>
+            )}
+          </section>
           {!['connections', 'changes', 'guide', 'explore'].includes(view) && (
             <div className="filterbar">
               <div className="filters">
@@ -1003,9 +1094,63 @@ export default function Dashboard() {
             <ReportExplorer
               key={clearGeneration}
               data={data}
+              mode={mode}
               onConnect={() => setConnectionOpen(true)}
             />
           </div>
+          {['overview', 'compare', 'connections'].includes(view) && (
+            <DataHealth
+              data={data}
+              mode={mode}
+              period={period}
+              length={length}
+              comparison={view === 'compare'}
+              clock={clock}
+              onConnect={() => setConnectionOpen(true)}
+              onExplore={() => go('explore')}
+              onExport={exportSnapshot}
+              onWindow={(to) => {
+                setEnd(to);
+                setCompareType('previous');
+                if (view === 'connections') go('overview');
+                setNotice(
+                  'Dates changed to a complete available window. Sources with shorter history still remain unavailable.',
+                );
+              }}
+            />
+          )}
+          {['overview', 'compare'].includes(view) && (
+            <div className="insight-grid">
+              {reviewInsights(data, period, campaign).map((item) => (
+                <article key={item.source}>
+                  <h3>{item.title}</h3>
+                  <div className="insight-change">
+                    {item.change > 0 ? '+' : ''}
+                    {item.change.toFixed(1)}%
+                  </div>
+                  <p>Compared with the previous equal-length period.</p>
+                  <p>{item.detail}</p>
+                </article>
+              ))}
+            </div>
+          )}
+          {['activity', 'campaigns', 'seo'].includes(view) &&
+            (() => {
+              const key =
+                view === 'activity' ? 'woo' : view === 'seo' ? 'seo' : 'ads';
+              const window = latestWindow(data, key, length, day());
+              return window && window.to !== end ? (
+                <div className="notice">
+                  <span>
+                    This source has complete {length}-day coverage ending{' '}
+                    {window.to}.
+                  </span>
+                  <Button variant="outline" onClick={() => setEnd(window.to)}>
+                    Use available dates
+                  </Button>
+                </div>
+              ) : null;
+            })()}
           {view === 'overview' && (
             <>
               <div className={'setup-banner ' + (connected ? 'compact' : '')}>
@@ -1545,6 +1690,27 @@ export default function Dashboard() {
           )}
           {view === 'seo' && (
             <>
+              <div className="notice">
+                <Clock3 size={18} />
+                <p>
+                  Search Console daily dates use Pacific Time. Store reporting
+                  uses Cairo time. Compare trends within each source; these are
+                  not identical 24-hour sales windows.{' '}
+                  <a
+                    href="https://support.google.com/webmasters/answer/96568"
+                    target="_blank"
+                    rel="noreferrer"
+                  >
+                    Google’s date definitions
+                  </a>
+                </p>
+              </div>
+              {data.sources.seo.note && (
+                <div className="notice">
+                  <ShieldCheck size={18} />
+                  <p>{data.sources.seo.note}</p>
+                </div>
+              )}
               <div className="metrics-grid">
                 <Metric
                   label="Organic Google clicks"
@@ -1709,8 +1875,9 @@ export default function Dashboard() {
                   <p>
                     GitHub hosts the interface only. The private WordPress
                     connector uses ZEE’s own sign-in and shares aggregate
-                    reporting with this tab. Staging is installed for validation;
-                    production and external source automation are not connected yet.
+                    reporting with this tab. The bridge is installed on staging
+                    and production; installation alone does not verify
+                    production totals or connect external accounts.
                   </p>
                 </div>
               </div>
@@ -1936,27 +2103,38 @@ export default function Dashboard() {
             </div>
             <DialogTitle>Connect through ZEE’s own website</DialogTitle>
             <DialogDescription>
-              The staging connector is installed for testing. Production and Google Ads automation still need approval and setup. The public dashboard never asks for your Google or WordPress password.
+              The existing bridge is installed on staging and production. This
+              opens its private reporting page; it does not install or update a
+              plugin. The public dashboard never asks for your Google or
+              WordPress password.
             </DialogDescription>
           </DialogHeader>
           <ol className="connection-steps">
             <li>
-              <strong>1. Start with the staging connection</strong>
+              <strong>1. Choose the store you want to review</strong>
               <span>
-                Select staging below and sign in on WordPress. Its data is a historical test copy, not current production sales. Background history collection is progressive.
+                Choose production for actual store figures, or staging for test
+                data. Sign in on that WordPress site. If sign-in fails, ask
+                Mostafa to verify your reporting access; do not create a new
+                account here.
               </span>
             </li>
             <li>
-              <strong>2. Authorize the sources</strong>
+              <strong>2. Allow this tab to view reports</strong>
               <span>
-                An Ads administrator must install and authorize the reporting script. Confirm forms, messaging, calls and Search Console feeds separately.
+                Click “Allow this dashboard tab to view reports” in the
+                WordPress window. The existing connector reads orders and
+                updates its own cached totals. Partial days stay unavailable
+                until collection finishes.
               </span>
             </li>
             <li>
-              <strong>3. Sign in and view the dashboard</strong>
+              <strong>3. Keep the connection window open</strong>
               <span>
-                The ZEE connection window stays open to refresh data every
-                minute.
+                This tab requests reports every minute. Google Ads and other
+                feeds still need their own setup. Check Data connections for the
+                exact requirements; refresh frequency is not a guarantee of
+                fresh source data.
               </span>
             </li>
           </ol>
@@ -1967,10 +2145,10 @@ export default function Dashboard() {
               onChange={(e) => setBridgeOrigin(e.target.value)}
             >
               <option value={BRIDGE_ORIGINS[0]}>
-                Staging — test and approve first
+                Staging — test figures only
               </option>
               <option value={BRIDGE_ORIGINS[1]}>
-                Production — only after installation approval
+                Production — existing installed bridge
               </option>
             </select>
           </label>

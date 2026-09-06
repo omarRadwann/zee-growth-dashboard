@@ -1,5 +1,15 @@
 # Mostafa — private reporting setup
 
+## Current handoff — 7 September 2026
+
+- The existing private bridge v0.3.0 was installed and activated on production on 6 September. The installation log confirms success, but production reconciliation and an authorized dashboard session are still unverified. Do not reinstall it to fix an empty dashboard.
+- The owner now requires an explanation and approval BEFORE every further production mutation, including plugin updates, settings, tracking and content. Dashboard-only GitHub changes do not update WordPress.
+- Staging prepared all 57 daily cohorts; a 36-day intermediate sample matched the Woo REST count (2 orders). The final 57-day snapshot contains 19 staging orders. This is not production history or a high-volume load test.
+- Version 0.3.0's already installed reader can advance bounded jobs while the user-authorized connection window is open. With WP-Cron disabled on staging, verify real server scheduling before claiming unattended refresh. Do not enable or alter production scheduling without approval.
+- Google Ads scripting remains unconfigured. An existing authorized administrator can handle the reporting script; do not upgrade a viewer's role merely to view numbers. A read-only API implementation is a separate route needing its own private backend, OAuth and developer token.
+- Search Console access works. A private manual snapshot was collected from all 92 DAYS rows, with Web / Egypt filters. No private dataset is in this repository. Source exports are snapshots, not live connections.
+- The dashboard now exposes coverage, missing-history warnings, private snapshot export/import and bridge collection progress. Snapshot mode is explicitly distinguished from live transport.
+
 ## 1. Install and restrict on staging
 
 Upload the folder `connectors/wordpress/zee-growth-bridge` as a WordPress plugin and activate it **on staging first**. Take the normal staging backup before activation.
@@ -14,7 +24,7 @@ Only `https://omarradwann.github.io` is allowed as the dashboard origin. The bro
 
 - The pilot queries the last 56 days plus today in `Africa/Cairo`, in EGP, through `wc_get_orders` (HPOS-compatible API), not direct order SQL.
 - It reads at most 100 orders per background job and stores a resumable daily aggregate. It checks count consistency, ascending IDs, Cairo dates, currency and concurrent order changes before publishing a complete day. Partial days never appear as complete.
-- Coverage grows backwards from today as whole days finish. Order changes mark the affected created-date cohort for refresh; current-day checks target five minutes and historical reconciliation targets six hours when cron runs. The reported source timestamp is conservatively the oldest included day check.
+- Coverage grows backwards from today as whole days finish. Order changes mark the affected created-date cohort for refresh; current-day checks target five minutes and historical reconciliation targets six hours when cron runs. In v0.3.0, lastSync is the latest successful daily refresh, not proof every historical day was rechecked then. The progress payload also carries the oldest included day check.
 - Reconcile actual counts and execution time on staging, including a day exceeding 100 orders. Large total history is no longer loaded into one synchronous job. This does not remove the need for a scale test and reliable cron.
 - Use a real server cron for WordPress events. Do not promise minute-level updates with low-traffic WP-Cron alone.
 - First run may require a cron tick and a second dashboard refresh. Confirm the source's `lastSync` changes after completion.
@@ -54,6 +64,8 @@ Add to cart / checkout | Correctly configured commerce events, excluding interna
 Delivery confirmed | Approved courier/operations delivery confirmation, separate from order completion
 Organic search | Correct Search Console property, Search type Web, Egypt filter, complete daily totals; do not derive daily data from a single screenshot total
 
+Search Console's daily calendar is Pacific Time; preserve those dates. The workspace clock and WooCommerce calendar are Cairo. Never relabel Search Console daily buckets as Cairo or infer hour-level sales attribution from matching date labels. See [Google's data definitions](https://support.google.com/webmasters/answer/96568).
+
 The signed `/ingest/events` and `/ingest/seo` routes accept complete version-1 snapshots, not arbitrary public browser events. Build authenticated provider adapters which normalize to the documented schema. Never expose ingestion keys to storefront JavaScript. Do not send customer names, phone numbers, addresses or email addresses. Use opaque event IDs, agreed channel names and aggregate counts. Do not infer “Google Ads” from the fact that an ad was running.
 
 For GA4, verify consent and ecommerce events before adding report and article-path breakdowns. The current build has no GA4 connector. Do not install duplicate tags or use tracking to bypass consent choices.
@@ -73,7 +85,7 @@ For GA4, verify consent and ecommerce events before adding report and article-pa
 
 ## 6. Production transition
 
-After the above passes, explicitly approve installation on production. Production generates new ingestion keys. Update the approved source adapters' destination and environment together, then reconcile again. Do not reuse staging data as production history. Do not publish secrets to GitHub to make the integration “work”.
+Installation has already occurred; do not repeat it. Finish read-only reconciliation and user sign-in first. Any further production changes require the owner's approval. Source-adapter configuration and scheduling must be separately reviewed and authorized. Never reuse staging data as production history, and never publish secrets or business totals to GitHub to make the dashboard appear populated.
 
 ## Verification performed in this build
 
