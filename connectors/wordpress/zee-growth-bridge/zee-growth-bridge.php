@@ -2,7 +2,7 @@
 /**
  * Plugin Name: ZEE Growth Private Reporting Bridge
  * Description: Read-only WooCommerce aggregates and signed reporting imports for the ZEE GitHub dashboard. Stage and reconcile before production use.
- * Version: 0.1.0
+ * Version: 0.2.0
  * Requires PHP: 8.1
  * Author: ZEE
  */
@@ -12,7 +12,7 @@ final class Zee_Growth_Bridge {
     const CAP = 'view_zee_growth';
     const ORIGIN = 'https://omarradwann.github.io';
     const DAYS = 56;
-    const MAX_ORDERS = 10000;
+    const BATCH_SIZE = 100;
 
     public static function boot() {
         add_action('admin_menu', [__CLASS__, 'menu']);
@@ -24,6 +24,8 @@ final class Zee_Growth_Bridge {
         add_action('woocommerce_order_status_changed', [__CLASS__, 'schedule_refresh']);
         add_action('woocommerce_order_refunded', [__CLASS__, 'schedule_refresh']);
         add_action('woocommerce_update_order', [__CLASS__, 'schedule_refresh']);
+        add_action('woocommerce_before_delete_order', [__CLASS__, 'schedule_refresh']);
+        add_action('woocommerce_before_trash_order', [__CLASS__, 'schedule_refresh']);
     }
     public static function activate() {
         $role = get_role('administrator');
@@ -77,7 +79,7 @@ final class Zee_Growth_Bridge {
         <?php endforeach; ?>
         <form method="post"><?php wp_nonce_field('zee-growth-admin'); ?><button name="zee_growth_refresh" class="button" value="1">Request store refresh</button></form>
         <p><?php echo esc_html(get_option('zee_growth_woo_error', '')); ?></p>
-        <p>Large-store guard: this staging pilot stops at <?php echo esc_html(self::MAX_ORDERS); ?> orders per refresh rather than return misleading partial totals. Add a paginated background warehouse before exceeding this limit.</p>
+        <p>Background collection reads at most <?php echo esc_html(self::BATCH_SIZE); ?> orders per job. Only reconciled whole days appear. Order changes queue the affected day; recent days refresh first. A server cron is required for unattended updates.</p>
         <?php endif; ?>
         </div>
         <script>
@@ -115,8 +117,37 @@ final class Zee_Growth_Bridge {
     public static function environment() {
         return strtolower((string) wp_parse_url(home_url(), PHP_URL_HOST)) === 'zee-official.com' ? 'production' : 'staging';
     }
-    public static function schedule_refresh() {
+    public static function schedule_refresh($order_id = 0) {
+        if (is_numeric($order_id) && $order_id > 0 && function_exists('wc_get_order')) {
+            $order = wc_get_order($order_id);
+            if ($order && $order->get_date_created()) {
+                $date = wp_date('Y-m-d', $order->get_date_created()->getTimestamp(), new DateTimeZone('Africa/Cairo'));
+                // Keep a version rather than deleting queue entries: a concurrent update cannot be lost.
+                update_option('zee_growth_dirty_' . $date, sprintf('%.6f', microtime(true)), false);
+            }
+        }
         if (!wp_next_scheduled('zee_growth_refresh_woo')) { wp_schedule_single_event(time() + 10, 'zee_growth_refresh_woo'); }
+    }
+    private static function dates() {
+        $today = new DateTimeImmutable('today', new DateTimeZone('Africa/Cairo'));
+        $dates = [];
+        for ($i = 0; $i <= self::DAYS; $i++) { $dates[] = $today->modify('-' . $i . ' days')->format('Y-m-d'); }
+        return $dates;
+    }
+    private static function empty_day($date) {
+        return ['date'=>$date, 'orders'=>0, 'paidOrders'=>0, 'recordedPaidValue'=>0.0, 'cancelledOrders'=>0, 'completedOrders'=>0, 'refundValue'=>0.0];
+    }
+    private static function publish_woo() {
+        $rows = []; $oldest_sync = time();
+        foreach (self::dates() as $date) {
+            $day = get_option('zee_growth_day_' . $date);
+            if (!is_array($day)) { break; }
+            $rows[] = $day['row'];
+            $oldest_sync = min($oldest_sync, $day['synced']);
+        }
+        if (!$rows) { return; }
+        $rows = array_reverse($rows);
+        update_option('zee_growth_woo_snapshot', ['source'=>['status'=>'connected', 'lastSync'=>gmdate('c', $oldest_sync), 'from'=>$rows[0]['date'], 'to'=>$rows[count($rows)-1]['date'], 'note'=>'Reconciled created-date cohorts, current status. Freshness is the oldest included day check. Event-driven updates and six-hour reconciliation require server cron. Paid value is gross before refunds, not settled cash.'], 'rows'=>$rows], false);
     }
     public static function refresh_woo() {
         if (!function_exists('wc_get_orders')) { update_option('zee_growth_woo_error', 'WooCommerce is not active.', false); return; }
@@ -124,43 +155,59 @@ final class Zee_Growth_Bridge {
         // Atomic lock prevents concurrent workers from adding/overwriting partial aggregates.
         if (!add_option('zee_growth_woo_lock', time(), '', false)) {
             if ((int) get_option('zee_growth_woo_lock') < time() - 900) { delete_option('zee_growth_woo_lock'); }
+            self::schedule_refresh();
             return;
         }
         try {
-            $now = new DateTimeImmutable('now', new DateTimeZone('Africa/Cairo'));
-            $from = $now->modify('-' . self::DAYS . ' days')->format('Y-m-d');
-            $to = $now->format('Y-m-d');
-            $rows = [];
-            for ($d = new DateTimeImmutable($from, new DateTimeZone('Africa/Cairo')); $d->format('Y-m-d') <= $to; $d = $d->modify('+1 day')) {
-                $key = $d->format('Y-m-d');
-                $rows[$key] = ['date'=>$key, 'orders'=>0, 'paidOrders'=>0, 'recordedPaidValue'=>0.0, 'cancelledOrders'=>0, 'completedOrders'=>0, 'refundValue'=>0.0];
+            $dates = self::dates();
+            $state = get_option('zee_growth_woo_job');
+            if (!is_array($state) || !in_array($state['date'], $dates, true)) {
+                $state = null;
+                foreach ($dates as $date) {
+                    $day = get_option('zee_growth_day_' . $date);
+                    $dirty = (string) get_option('zee_growth_dirty_' . $date, '0');
+                    $ttl = $date === $dates[0] ? 300 : 21600;
+                    if (!$day || $day['stamp'] !== $dirty || $day['synced'] < time() - $ttl) {
+                        $state = ['date'=>$date, 'page'=>1, 'stamp'=>$dirty, 'last_id'=>0, 'row'=>self::empty_day($date)];
+                        break;
+                    }
+                }
+                if (!$state) { self::publish_woo(); return; }
             }
             $statuses = array_diff(array_keys(wc_get_order_statuses()), ['wc-checkout-draft', 'wc-auto-draft', 'trash']);
-            $args = ['type'=>'shop_order', 'status'=>array_values($statuses), 'date_created'=>$from . '...' . $to, 'limit'=>100, 'paginate'=>true, 'orderby'=>'ID', 'order'=>'ASC'];
-            $first = wc_get_orders($args + ['page'=>1]);
-            if ($first->total > self::MAX_ORDERS) { throw new RuntimeException('Store refresh exceeded the ' . self::MAX_ORDERS . '-order safety limit. No partial totals were saved. Ask Mostafa to add background pagination/warehouse support.'); }
-            $seen = [];
-            for ($page = 1; $page <= max(1, $first->max_num_pages); $page++) {
-                $result = $page === 1 ? $first : wc_get_orders($args + ['page'=>$page]);
-                foreach ($result->orders as $order) {
-                    if (isset($seen[$order->get_id()])) { throw new RuntimeException('Order pagination changed during the refresh. Retry is required.'); }
-                    $seen[$order->get_id()] = true;
+            $args = ['type'=>'shop_order', 'status'=>array_values($statuses), 'date_created'=>$state['date'], 'limit'=>self::BATCH_SIZE, 'paginate'=>true, 'orderby'=>'ID', 'order'=>'ASC'];
+            $result = wc_get_orders($args + ['page'=>$state['page']]);
+            if ($state['page'] === 1) { $state['expected'] = (int) $result->total; }
+            if ($state['expected'] !== (int) $result->total) { throw new RuntimeException('Order count changed during a day refresh. Retrying; incomplete totals are not shared.'); }
+            foreach ($result->orders as $order) {
+                    if ($order->get_id() <= $state['last_id']) { throw new RuntimeException('Pagination changed. Retrying without publishing partial totals.'); }
+                    $state['last_id'] = $order->get_id();
                     if ($order->get_currency() !== 'EGP') { throw new RuntimeException('Mixed-currency orders require currency-specific reporting. Nothing was combined.'); }
                     $created = $order->get_date_created();
-                    if (!$created) { continue; }
+                    if (!$created) { throw new RuntimeException('An order is missing its created date.'); }
                     $key = wp_date('Y-m-d', $created->getTimestamp(), new DateTimeZone('Africa/Cairo'));
-                    if (!isset($rows[$key])) { continue; }
-                    $rows[$key]['orders']++;
-                    if ($order->get_date_paid()) { $rows[$key]['paidOrders']++; $rows[$key]['recordedPaidValue'] += (float) $order->get_total(); }
-                    if ($order->has_status('cancelled')) { $rows[$key]['cancelledOrders']++; }
-                    if ($order->has_status('completed')) { $rows[$key]['completedOrders']++; }
-                    $rows[$key]['refundValue'] += (float) $order->get_total_refunded();
-                }
+                    if ($key !== $state['date']) { throw new RuntimeException('Order date is outside the requested Cairo day.'); }
+                    $state['row']['orders']++;
+                    if ($order->get_date_paid()) { $state['row']['paidOrders']++; $state['row']['recordedPaidValue'] += (float) $order->get_total(); }
+                    if ($order->has_status('cancelled')) { $state['row']['cancelledOrders']++; }
+                    if ($order->has_status('completed')) { $state['row']['completedOrders']++; }
+                    $state['row']['refundValue'] += (float) $order->get_total_refunded();
             }
-            if (count($seen) !== (int) $first->total) { throw new RuntimeException('Order count changed during refresh. No partial totals were saved.'); }
-            update_option('zee_growth_woo_snapshot', ['source'=>['status'=>'connected', 'lastSync'=>gmdate('c'), 'from'=>$from, 'to'=>$to, 'note'=>'Created-date cohorts; current order status. Recorded paid value is gross order total before refunds, not settled cash.'], 'rows'=>array_values($rows)], false);
+            if ($state['page'] < (int) $result->max_num_pages) {
+                $state['page']++;
+                update_option('zee_growth_woo_job', $state, false);
+            } else {
+                $check = wc_get_orders(array_merge($args, ['limit'=>1, 'page'=>1, 'return'=>'ids']));
+                if ($state['row']['orders'] !== $state['expected'] || (int) $check->total !== $state['expected'] || (string) get_option('zee_growth_dirty_' . $state['date'], '0') !== $state['stamp']) { throw new RuntimeException('Orders changed during reconciliation. Retrying this day.'); }
+                foreach (['recordedPaidValue','refundValue'] as $field) { $state['row'][$field] = round($state['row'][$field], 2); }
+                update_option('zee_growth_day_' . $state['date'], ['row'=>$state['row'], 'synced'=>time(), 'stamp'=>$state['stamp']], false);
+                delete_option('zee_growth_woo_job');
+                self::publish_woo();
+            }
             delete_option('zee_growth_woo_error');
+            self::schedule_refresh();
         } catch (Throwable $error) {
+            delete_option('zee_growth_woo_job');
             update_option('zee_growth_woo_error', sanitize_text_field($error->getMessage()), false);
         } finally { delete_option('zee_growth_woo_lock'); }
     }

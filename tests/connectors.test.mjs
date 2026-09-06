@@ -28,3 +28,12 @@ test('Ads script contains no campaign-changing operations',()=>{assert.doesNotMa
 test('WordPress private reader requires capability, nonce and no-store',()=>{assert.match(php,/current_user_can\(self::CAP\)/);assert.match(php,/check_ajax_referer\('zee-growth-read'\)/);assert.match(php,/Cache-Control: private, no-store/);assert.doesNotMatch(php,/wp_ajax_nopriv_zee_growth_snapshot/);});
 test('WordPress import validates HMAC, time window and account',()=>{assert.match(php,/hash_equals\(\$expected/);assert.match(php,/abs\(time\(\) - \(int\) \$timestamp\) > 300/);assert.match(php,/Wrong Ads account/);assert.match(php,/older report cannot overwrite/);});
 test('Woo orders are read via Woo APIs and never written',()=>{assert.match(php,/wc_get_orders/);assert.doesNotMatch(php,/\$order->(save|delete|update_status|set_)|UPDATE.+wc_orders|DELETE.+wc_orders/i);});
+test('Woo collection is bounded, resumable, date reconciled and event invalidated',()=>{
+  assert.match(php,/const BATCH_SIZE = 100/);
+  assert.match(php,/update_option\('zee_growth_woo_job'/);
+  assert.match(php,/\$state\['row'\]\['orders'\] !== \$state\['expected'\]/);
+  assert.match(php,/\$key !== \$state\['date'\]/);
+  assert.match(php,/woocommerce_before_delete_order/);
+  assert.match(php,/get_option\('zee_growth_dirty_'/);
+  assert.doesNotMatch(php,/MAX_ORDERS|for \(\$page = 1/);
+});

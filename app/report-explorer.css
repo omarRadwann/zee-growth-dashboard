@@ -6,6 +6,20 @@
   line-height: 1.55;
   min-width: 0;
 }
+.rx-setup-path {
+  text-align: left;
+  max-width: 950px;
+  margin: 24px auto;
+  padding: 24px;
+  background: #f1f6f4;
+  border: 1px solid #cbded5;
+  border-radius: 14px;
+}
+.rx-setup-path > strong { font-size: 20px; }
+.rx-setup-path ol { display: grid; gap: 18px; margin: 20px 0; padding-left: 24px; }
+.rx-setup-path li { padding-left: 8px; }
+.rx-setup-path li b, .rx-setup-path li span { display: block; }
+.rx-setup-path li span { color: #435a65; font-size: 14px; margin-top: 4px; }
 .rx h2 {
   font-size: 25px;
   letter-spacing: -0.6px;

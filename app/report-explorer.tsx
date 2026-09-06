@@ -372,6 +372,16 @@ export default function ReportExplorer({ data, onConnect }: Props) {
             the reporting service, or open an actual export from one of the
             sources below.
           </p>
+          <div className="rx-setup-path">
+            <strong>Why the charts are empty</strong>
+            <p>This public website does not contain private ZEE sales or ad spend. A signed-in reporting connection must supply them.</p>
+            <ol>
+              <li><b>Store connection</b><span>The private bridge is installed on staging for validation. Choose Connect sources → Staging, then allow reporting in the WordPress window. Production has not been connected.</span></li>
+              <li><b>Google Ads automation</b><span>The reporting account was verified as Read only on 6 September 2026. An Ads administrator must install and authorize the reporting script. Viewing reports alone does not create an automatic feed.</span></li>
+              <li><b>Organic search and enquiries</b><span>Search Console, GA4, forms, WhatsApp and call tracking still need their own authenticated connections. An unconnected source is missing—not zero.</span></li>
+            </ol>
+            <Button onClick={onConnect}>Open private connection</Button>
+          </div>
           <div className="rx-source-grid">
             <article>
               <b>Google Ads</b>
@@ -390,8 +400,7 @@ export default function ReportExplorer({ data, onConnect }: Props) {
             <article>
               <b>WooCommerce</b>
               <p>
-                Orders, sales, refunds and products. Use an aggregate Analytics
-                export, not a customer contact list.
+                Daily orders, recorded payments, cancellations and refunds through the private bridge. Product breakdowns require a separate aggregate export.
               </p>
               <a
                 href="https://zee-official.com/wp-admin/admin.php?page=wc-admin&path=%2Fanalytics%2Frevenue"

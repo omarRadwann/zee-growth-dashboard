@@ -9,18 +9,18 @@ The reporting website for `omarRadwann/zee-growth-dashboard`.
 - Campaign filtering, an independent newest-first activity stream, and CSV summary export.
 - Explicit synthetic example mode. The initial website contains **no real performance data**.
 - Validated reporting JSON imports. Imported data stays in this browser tab's memory; no upload or persistent business-data storage.
-- Prepared private WordPress bridge and reporting-only Google Ads script. **Neither is installed or authorized by publishing this repository.**
+- Private WordPress bridge installed on staging and a prepared reporting-only Google Ads script. Publishing GitHub code alone does not connect private accounts.
 
 ## What is not live yet
 
-The Google session was signed out during this build. There is no verified automatic Google Ads, WooCommerce, Search Console, GA4, WhatsApp, call or CRM connection. These must not be described as live or complete.
+On 6 September 2026, the correct Google Ads account was signed in and real reports were readable. The account access page confirmed **Read only** permission. New script creation failed. An existing Ads administrator must install/authorize the reporting-only script; do not request broad campaign editing access merely to view reports. Google Ads, production WooCommerce, Search Console, GA4, WhatsApp, calls and CRM remain unconnected.
 
-The WordPress connector has syntax/contract checks and security checks, but still needs installation, permission tests and reconciliation inside staging. No changes were made to production or staging by this dashboard build.
+The WordPress connector v0.2.0 is installed and active on staging. Its authenticated reader returned HTTP 200 with private/no-store headers; anonymous reading was rejected and unsigned ingestion returned HTTP 401. Background jobs produced a dated staging-only Woo snapshot. Full history reconciliation and production approval remain required. No production plugin was installed.
 
 Source | Prepared integration | Still required
 --- | --- | ---
-Google Ads | Read-only Ads script; signed daily campaign snapshots; approved purchase-action allowlist | Google sign-in, purchase-action audit, private key configuration, Preview reconciliation, execution authorization and a supported schedule
-WooCommerce | Private store aggregation using `wc_get_orders`, no order mutation | Staging installation, `view_zee_growth`, real server cron, count/status/refund reconciliation and scale review
+Google Ads | Read-only Ads script; signed daily campaign snapshots; approved purchase-action allowlist | Existing administrator installation, purchase-action audit, private key configuration, Preview reconciliation, execution authorization and a supported schedule
+WooCommerce | Staging private aggregation using `wc_get_orders`, no order mutation | Full count/status/refund reconciliation, reliable server cron, scale/load review and explicit production approval
 Forms / WhatsApp / calls / delivery | Signed aggregate snapshot ingestion and separate event types | Provider/CRM-specific adapters, event deduplication, complete coverage, confirmed outcomes and consent review; these adapters are **not implemented**
 Search Console | Validated daily aggregate data contract and signed snapshot receiver | Authenticated exporter/API adapter for the correct property with Egypt/Web filters; **not implemented**
 GA4 | Measurement definitions in the guide | GA4 connector, event audit, attribution and article-journey reporting; **not implemented**
@@ -71,6 +71,6 @@ Only dimensions supplied in a report appear. Generic Ads conversions are not pre
 - The public website contains no real financial datasets or credentials.
 - Production reporting access was verified read-only on 6 September 2026. The old sales report showed inconsistent recent coverage; do not use it as the sales source of truth without reconciliation.
 - A bulk production order-history extraction was stopped before collection, pending explicit approval. No reporting plugin was installed on production.
-- Google Ads was signed out during the access check. Current Ads/GA4/Search Console live feeds remain unconnected.
-- The prepared WordPress connector remains a staging candidate. Its 10,000-order guard is too small for a full ZEE 56-day window. Implement bounded resumable aggregation and test reconciliation before production installation; do not merely raise the guard and run a large synchronous job.
+- Google Ads is signed in, but the reporting user's verified Read only role cannot install a script. Current Ads/GA4/Search Console automatic feeds remain unconnected.
+- The installed staging connector uses resumable 100-order jobs instead of the old 10,000-order full-refresh limit. It publishes only contiguous reconciled days, retries changed counts, and queues affected days after order changes. Recent days refresh first; historical days have a six-hour reconciliation target when cron runs. Initial collection is progressive, not instantly complete.
 - Ads scripts, Google OAuth/service authorization, approved purchase-action mapping, and any GA4/CRM adapters still require setup and source reconciliation. None are implied by CSV support.

@@ -13,8 +13,9 @@ Only `https://omarradwann.github.io` is allowed as the dashboard origin. The bro
 ## 2. Reconcile WooCommerce
 
 - The pilot queries the last 56 days plus today in `Africa/Cairo`, in EGP, through `wc_get_orders` (HPOS-compatible API), not direct order SQL.
-- It stops at 10,000 orders per refresh, detects inconsistent pagination, and keeps the previous snapshot on failure. It never returns a truncated range as complete.
-- Check the actual order count and load on staging. If above this guard, do not raise it blindly: implement a resumable paginated worker/warehouse with incremental updates and reconciliation first.
+- It reads at most 100 orders per background job and stores a resumable daily aggregate. It checks count consistency, ascending IDs, Cairo dates, currency and concurrent order changes before publishing a complete day. Partial days never appear as complete.
+- Coverage grows backwards from today as whole days finish. Order changes mark the affected created-date cohort for refresh; current-day checks target five minutes and historical reconciliation targets six hours when cron runs. The reported source timestamp is conservatively the oldest included day check.
+- Reconcile actual counts and execution time on staging, including a day exceeding 100 orders. Large total history is no longer loaded into one synchronous job. This does not remove the need for a scale test and reliable cron.
 - Use a real server cron for WordPress events. Do not promise minute-level updates with low-traffic WP-Cron alone.
 - First run may require a cron tick and a second dashboard refresh. Confirm the source's `lastSync` changes after completion.
 - Check an online paid order, pending COD order, cancelled order, partially refunded order and fully refunded order. Match totals to the same order-created cohort, not payment-date financial reports.
@@ -26,6 +27,7 @@ Only `https://omarradwann.github.io` is allowed as the dashboard origin. The bro
 Use account **206-762-3227**. The initial setup account **685-671-3043** is not the intended account.
 
 1. Sign in to the existing advertiser account and confirm account time zone/currency. The script fails closed unless they are `Africa/Cairo` / `EGP`; do not change account settings to force a match.
+   On 6 September 2026, the reporting user's account role was verified as Read only. An existing Ads administrator should install and authorize the script; the reporting user does not need broad campaign-editing permissions. Script creation was not possible in that read-only session.
 2. Audit purchase conversion actions. Select the primary purchase action IDs that represent actual purchases. Avoid counting both a Google tag purchase and its imported GA4 duplicate. Confirm `transaction_id` deduplication, currency, value, refunds and attribution settings.
 3. Copy `connectors/google-ads-report.js` to an authorized Google Ads script.
 4. Set `purchaseActionIds`. Copy the private **Ads** ingestion key from the staging ZEE Growth admin page into the Google Ads editor, not GitHub.
@@ -77,7 +79,7 @@ After the above passes, explicitly approve installation on production. Productio
 
 - Automated metrics tests: complete-period logic, missing vs zero, ROAS/CPA/CTR arithmetic, campaign filtering, fractional attribution, Cairo/leap-date handling, duplicate detection, safe CSV export and source freshness.
 - Google Ads script tested against mocked reporting APIs, including signature construction and failure cases; **not executed against the real Ads account**.
-- PHP connector syntax parsed and source-level permission/read-only guards tested; **not runtime-tested in WordPress**.
+- PHP connector syntax parsed and source-level permission/read-only guards tested. On staging, installation/activation succeeded; signed-in aggregate reads returned HTTP 200 with no-store, anonymous reads were blocked, unsigned ingestion returned HTTP 401, and background collection produced dated Woo data. Full reconciliation, non-admin permission revocation and high-volume load testing remain pending.
 - Frontend type checking and production build required before publication.
 - No browser visual/interaction QA or production-data reconciliation has been claimed.
 - Optional WebMCP reporting/filter tools have mocked contract tests, but no supported live WebMCP browser context was available for verification. They do not change external accounts.
