@@ -1,0 +1,12 @@
+// Optional, feature-detected WebMCP surface. No tool changes an external account.
+export type ReportingWindow = { end: string; days: 7 | 28 | 56 };
+type Tool = { name: string; title: string; description: string; inputSchema: object; annotations: { readOnlyHint: boolean; untrustedContentHint: boolean }; execute(input: unknown): unknown };
+export type ModelContext = { registerTool(tool: Tool, options: { signal: AbortSignal }): void | Promise<void> };
+export function registerReportingTools(context: ModelContext | undefined, actions: { summary(): unknown; setWindow(value: ReportingWindow): unknown }, signal: AbortSignal) {
+  if (!context?.registerTool) return;
+  const tools: Tool[] = [
+    { name: 'read_zee_reporting_summary', title: 'Read ZEE reporting summary', description: 'Read the currently selected source totals and data mode. Example mode is synthetic, not ZEE performance.', inputSchema: { type: 'object', properties: {}, additionalProperties: false }, annotations: { readOnlyHint: true, untrustedContentHint: true }, execute(input) { if (!input || typeof input !== 'object' || Object.keys(input).length) throw new Error('No parameters are accepted.'); return actions.summary(); } },
+    { name: 'set_zee_reporting_window', title: 'Set the reporting window', description: 'Change the visible local dashboard period only. This never changes Google Ads, WordPress, tracking or customer data.', inputSchema: { type: 'object', properties: { end: { type: 'string', format: 'date' }, days: { type: 'integer', enum: [7,28,56] } }, required: ['end','days'], additionalProperties: false }, annotations: { readOnlyHint: false, untrustedContentHint: false }, execute(input) { if (!input || typeof input !== 'object' || Array.isArray(input)) throw new Error('Reporting window is required.'); const v = input as Record<string,unknown>; if (Object.keys(v).some(k => !['end','days'].includes(k)) || typeof v.end !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(v.end) || !Number.isFinite(Date.parse(v.end)) || new Date(v.end).toISOString().slice(0,10) !== v.end || ![7,28,56].includes(Number(v.days)) || typeof v.days !== 'number') throw new Error('Use a valid end date and 7, 28 or 56 days.'); return actions.setWindow(v as unknown as ReportingWindow); } },
+  ];
+  for (const tool of tools) { try { Promise.resolve(context.registerTool(tool, { signal })).catch(() => { /* The visible dashboard remains available. */ }); } catch { /* Unsupported proposed API is not required for team use. */ } }
+}

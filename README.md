@@ -1,0 +1,62 @@
+# ZEE Growth
+
+The reporting website for `omarRadwann/zee-growth-dashboard`.
+
+## What works now
+
+- Responsive dashboard: overview, Google Ads campaigns, before/after, sales and enquiries, organic search, source freshness, and a change journal.
+- 7-, 28- and 56-day comparisons. Today is excluded from completed-period reports.
+- Campaign filtering, an independent newest-first activity stream, and CSV summary export.
+- Explicit synthetic example mode. The initial website contains **no real performance data**.
+- Validated reporting JSON imports. Imported data stays in this browser tab's memory; no upload or persistent business-data storage.
+- Prepared private WordPress bridge and reporting-only Google Ads script. **Neither is installed or authorized by publishing this repository.**
+
+## What is not live yet
+
+The Google session was signed out during this build. There is no verified automatic Google Ads, WooCommerce, Search Console, GA4, WhatsApp, call or CRM connection. These must not be described as live or complete.
+
+The WordPress connector has syntax/contract checks and security checks, but still needs installation, permission tests and reconciliation inside staging. No changes were made to production or staging by this dashboard build.
+
+Source | Prepared integration | Still required
+--- | --- | ---
+Google Ads | Read-only Ads script; signed daily campaign snapshots; approved purchase-action allowlist | Google sign-in, purchase-action audit, private key configuration, Preview reconciliation, execution authorization and a supported schedule
+WooCommerce | Private store aggregation using `wc_get_orders`, no order mutation | Staging installation, `view_zee_growth`, real server cron, count/status/refund reconciliation and scale review
+Forms / WhatsApp / calls / delivery | Signed aggregate snapshot ingestion and separate event types | Provider/CRM-specific adapters, event deduplication, complete coverage, confirmed outcomes and consent review; these adapters are **not implemented**
+Search Console | Validated daily aggregate data contract and signed snapshot receiver | Authenticated exporter/API adapter for the correct property with Egypt/Web filters; **not implemented**
+GA4 | Measurement definitions in the guide | GA4 connector, event audit, attribution and article-journey reporting; **not implemented**
+
+## Run and publish
+
+```sh
+npm ci
+npm run dev:pages
+npm test
+npm run typecheck
+npm run build:pages
+```
+
+GitHub Pages publishes `/docs` on the repository's default branch (`codex/growth-dashboard`). Only the static browser application is built there. No backend is deployed to GitHub Pages. The generated Sites scaffold and its Shadcn/Base UI components were reused; GitHub is the explicitly requested publishing destination. Use the `*:pages` scripts for this deployment.
+
+Do not put credentials, service-account files, raw order exports or customer data in this repository. The private ingestion keys are generated on the WordPress server at plugin activation and shown only to administrators. They are not GitHub or browser configuration values.
+
+## Team use
+
+1. Open the website. Use **Explore example** to learn the screens; these numbers are made up.
+2. After the private connector is installed, choose **Connect data**, select staging, sign in on ZEE's own WordPress website, and explicitly allow sharing with the dashboard tab.
+3. Keep the small connection window open. Dashboard refresh requests run once per minute. Woo snapshots refresh in the background about every five minutes when server cron runs; source delays remain visible.
+4. Record important changes in **Change journal**. The journal is device-local, not shared; export it for the team.
+5. Use **Before & after** to compare complete periods, then check budget, promotions, stock and seasonal effects. Do not claim causality from a simple comparison.
+
+## Interpretation safeguards
+
+- Ads purchase value / spend = purchase ROAS, **not profit or bank receipts**.
+- Ads purchases are interaction-date, attribution-based counts. Fractional attribution is retained.
+- Store totals are order-created-date cohorts, with current order status and refunds as of the snapshot. All configured order statuses are included except drafts/trash; cancellations and refunds are shown separately.
+- Recorded paid value is the gross total of orders with a payment date, before refunds, including order tax/shipping as recorded. It is **not cash settlement**, particularly for COD. “Completed” is not verified delivery.
+- Intent events such as WhatsApp clicks never become confirmed conversations automatically. Enquiry/event counts are not deduplicated unique people.
+- A dash means missing data or an undefined ratio. No partial-coverage totals or zero-baseline percentage growth are invented.
+- The activity stream is independent of the selected historical report period so new events can appear. It displays up to 60 newest records; event counters use the selected reporting period.
+
+## Staging acceptance before production
+
+See [Mostafa setup and acceptance](SETUP-MOSTAFA.md). Production publication of this frontend does not authorize changes to ad spend, campaigns, consent settings or the production checkout.
