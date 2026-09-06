@@ -60,3 +60,17 @@ Do not put credentials, service-account files, raw order exports or customer dat
 ## Staging acceptance before production
 
 See [Mostafa setup and acceptance](SETUP-MOSTAFA.md). Production publication of this frontend does not authorize changes to ad spend, campaigns, consent settings or the production checkout.
+# Performance explorer update
+
+The website now opens on the report explorer. It accepts real English-column Google Ads, Google Search Console and aggregate WooCommerce CSV exports in a background worker (UTF-8 and BOM-marked UTF-16). It supports custom dates, intersecting available dimensions, Arabic/English query classification, brand-term filtering, top-group bar charts, daily/weekly/monthly trends, comparison tables, pagination and filtered CSV export.
+
+Only dimensions supplied in a report appear. Generic Ads conversions are not presented as purchases. Imported search-term rows are not account totals. Missing dates are chart gaps; comparison requires complete observed date coverage or an explicitly covered connected feed. Files remain in the current tab, are not uploaded, and are not automatically refreshed. This importer is a historical-analysis fallback, not a substitute for the private live service.
+
+## Current live-service status
+
+- The public website contains no real financial datasets or credentials.
+- Production reporting access was verified read-only on 6 September 2026. The old sales report showed inconsistent recent coverage; do not use it as the sales source of truth without reconciliation.
+- A bulk production order-history extraction was stopped before collection, pending explicit approval. No reporting plugin was installed on production.
+- Google Ads was signed out during the access check. Current Ads/GA4/Search Console live feeds remain unconnected.
+- The prepared WordPress connector remains a staging candidate. Its 10,000-order guard is too small for a full ZEE 56-day window. Implement bounded resumable aggregation and test reconciliation before production installation; do not merely raise the guard and run a large synchronous job.
+- Ads scripts, Google OAuth/service authorization, approved purchase-action mapping, and any GA4/CRM adapters still require setup and source reconciliation. None are implied by CSV support.

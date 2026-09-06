@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
+import ReportExplorer from './report-explorer';
 import { registerReportingTools, type ModelContext } from '@/lib/agent-tools';
 import {
   Activity,
@@ -88,6 +89,7 @@ import {
 
 type Data = ReturnType<typeof emptyData>;
 type View =
+  | 'explore'
   | 'overview'
   | 'compare'
   | 'campaigns'
@@ -104,6 +106,7 @@ const SOURCE_NAMES: Record<string, string> = {
   seo: 'Search Console',
 };
 const NAV: { id: View; title: string; icon: typeof Activity }[] = [
+  { id: 'explore', title: 'Performance explorer', icon: BarChart3 },
   { id: 'overview', title: 'Overview', icon: LayoutDashboard },
   { id: 'compare', title: 'Before & after', icon: SlidersHorizontal },
   { id: 'campaigns', title: 'Google Ads', icon: MousePointer2 },
@@ -246,7 +249,8 @@ function TableWrap({ children }: { children: React.ReactNode }) {
 }
 
 export default function Dashboard() {
-  const [view, setView] = useState<View>('overview');
+  const [clearGeneration, setClearGeneration] = useState(0);
+  const [view, setView] = useState<View>('explore');
   const [data, setData] = useState<Data>(emptyData);
   const [mode, setMode] = useState<'empty' | 'example' | 'import' | 'bridge'>(
     'empty',
@@ -319,24 +323,44 @@ export default function Dashboard() {
     }))
     .sort((x: any, y: any) => (y.cost || 0) - (x.cost || 0)) as any[];
   const activityRows = data.events
-    .filter(
-      (r: any) =>
-        (eventType === 'all' || r.type === eventType),
-    )
+    .filter((r: any) => eventType === 'all' || r.type === eventType)
     .sort((x: any, y: any) => y.at.localeCompare(x.at));
   const summaryRef = useRef<unknown>(null);
-  summaryRef.current = { mode, environment: data.environment, period, generatedAt: data.generatedAt, ads: a, commerce: w, seo: s, sources: data.sources };
+  summaryRef.current = {
+    mode,
+    environment: data.environment,
+    period,
+    generatedAt: data.generatedAt,
+    ads: a,
+    commerce: w,
+    seo: s,
+    sources: data.sources,
+  };
   useEffect(() => {
-    const context = (document as Document & { modelContext?: ModelContext }).modelContext;
+    const context = (document as Document & { modelContext?: ModelContext })
+      .modelContext;
     const lifecycle = new AbortController();
-    registerReportingTools(context, {
-      summary: () => summaryRef.current,
-      setWindow: (value) => {
-        if (value.end >= day()) throw new Error('Choose a complete day before today in Cairo.');
-        flushSync(() => { setEnd(value.end); setLength(value.days); setCompareType('previous'); });
-        return { end: value.end, days: value.days, changed: 'Local dashboard only' };
+    registerReportingTools(
+      context,
+      {
+        summary: () => summaryRef.current,
+        setWindow: (value) => {
+          if (value.end >= day())
+            throw new Error('Choose a complete day before today in Cairo.');
+          flushSync(() => {
+            setEnd(value.end);
+            setLength(value.days);
+            setCompareType('previous');
+          });
+          return {
+            end: value.end,
+            days: value.days,
+            changed: 'Local dashboard only',
+          };
+        },
       },
-    }, lifecycle.signal);
+      lifecycle.signal,
+    );
     return () => lifecycle.abort();
   }, []);
   const poll = () => {
@@ -427,6 +451,7 @@ export default function Dashboard() {
     setSearch('');
   }
   function disconnect() {
+    setClearGeneration((value) => value + 1);
     bridge.current?.close();
     bridge.current = null;
     activeOrigin.current = '';
@@ -462,7 +487,12 @@ export default function Dashboard() {
       const dates = SOURCES.map((s) => parsed.sources[s]?.to)
         .filter((date): date is string => Boolean(date))
         .sort();
-      if (dates.length) setEnd(dates[dates.length - 1] < day() ? dates[dates.length - 1] : shift(day(), -1));
+      if (dates.length)
+        setEnd(
+          dates[dates.length - 1] < day()
+            ? dates[dates.length - 1]
+            : shift(day(), -1),
+        );
       setNotice(
         'Snapshot loaded in this tab only. It was not uploaded or saved to GitHub.',
       );
@@ -878,19 +908,21 @@ export default function Dashboard() {
               <p>
                 {view === 'overview'
                   ? 'Follow your spend, sales and enquiries. Understand what changed.'
-                  : view === 'compare'
-                    ? 'Compare complete periods. Keep context beside the numbers.'
-                    : view === 'activity'
-                      ? 'Every outcome has its own meaning. No inflated “total leads” number.'
-                      : view === 'seo'
-                        ? 'Unpaid Google visibility, kept separate from advertising.'
-                        : view === 'connections'
-                          ? 'Connect privately. Know where each number comes from.'
-                          : view === 'changes'
-                            ? 'Record the changes that may explain a movement in performance.'
-                            : view === 'guide'
-                              ? 'Simple definitions, honest comparisons and the checks that matter.'
-                              : 'See which campaigns turn ad spend into attributed purchases.'}
+                  : view === 'explore'
+                    ? 'Charts, flexible filters and comparisons across your real reporting sources.'
+                    : view === 'compare'
+                      ? 'Compare complete periods. Keep context beside the numbers.'
+                      : view === 'activity'
+                        ? 'Every outcome has its own meaning. No inflated “total leads” number.'
+                        : view === 'seo'
+                          ? 'Unpaid Google visibility, kept separate from advertising.'
+                          : view === 'connections'
+                            ? 'Connect privately. Know where each number comes from.'
+                            : view === 'changes'
+                              ? 'Record the changes that may explain a movement in performance.'
+                              : view === 'guide'
+                                ? 'Simple definitions, honest comparisons and the checks that matter.'
+                                : 'See which campaigns turn ad spend into attributed purchases.'}
               </p>
             </div>
             <div className="page-actions">
@@ -916,7 +948,7 @@ export default function Dashboard() {
               </button>
             </div>
           )}
-          {!['connections', 'changes', 'guide'].includes(view) && (
+          {!['connections', 'changes', 'guide', 'explore'].includes(view) && (
             <div className="filterbar">
               <div className="filters">
                 <label>
@@ -967,6 +999,13 @@ export default function Dashboard() {
               </span>
             </div>
           )}
+          <div hidden={view !== 'explore'}>
+            <ReportExplorer
+              key={clearGeneration}
+              data={data}
+              onConnect={() => setConnectionOpen(true)}
+            />
+          </div>
           {view === 'overview' && (
             <>
               <div className={'setup-banner ' + (connected ? 'compact' : '')}>
@@ -1487,7 +1526,8 @@ export default function Dashboard() {
                     </table>
                     <p className="panel-foot">
                       Showing the latest {Math.min(60, activityRows.length)} of{' '}
-                      {activityRows.length} available records, newest first. This stream is independent of the report date filter. No
+                      {activityRows.length} available records, newest first.
+                      This stream is independent of the report date filter. No
                       names, email addresses or phone numbers are exposed here.
                     </p>
                   </TableWrap>
