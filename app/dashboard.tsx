@@ -519,7 +519,7 @@ export default function Dashboard() {
         : 'Popup blocked — allow this connection window',
     );
     setNotice(
-      'The private ZEE Growth connector must be installed first. Sign in on ZEE’s own website; never enter its password here.',
+      'The staging connector is installed for validation. Production is awaiting approval. Sign in on ZEE’s own website; never enter its password here.',
     );
   }
   function saveNote(event: React.FormEvent) {
@@ -1707,10 +1707,10 @@ export default function Dashboard() {
                 <div>
                   <h2>Public website. Private reporting data.</h2>
                   <p>
-                    GitHub hosts the interface only. The prepared WordPress
+                    GitHub hosts the interface only. The private WordPress
                     connector uses ZEE’s own sign-in and shares aggregate
-                    reporting with this tab. It still needs installation and
-                    source authorization.
+                    reporting with this tab. Staging is installed for validation;
+                    production and external source automation are not connected yet.
                   </p>
                 </div>
               </div>
@@ -1936,24 +1936,20 @@ export default function Dashboard() {
             </div>
             <DialogTitle>Connect through ZEE’s own website</DialogTitle>
             <DialogDescription>
-              The private connector is prepared, but not installed or authorized
-              yet. The public dashboard never asks for your Google or WordPress
-              password.
+              The staging connector is installed for testing. Production and Google Ads automation still need approval and setup. The public dashboard never asks for your Google or WordPress password.
             </DialogDescription>
           </DialogHeader>
           <ol className="connection-steps">
             <li>
-              <strong>1. Install the private connector</strong>
+              <strong>1. Start with the staging connection</strong>
               <span>
-                Mostafa installs the included plugin on staging first and grants
-                the reporting-only permission.
+                Select staging below and sign in on WordPress. Its data is a historical test copy, not current production sales. Background history collection is progressive.
               </span>
             </li>
             <li>
               <strong>2. Authorize the sources</strong>
               <span>
-                Approve the reporting-only Ads script. Confirm forms, messaging,
-                calls and Search Console feeds separately.
+                An Ads administrator must install and authorize the reporting script. Confirm forms, messaging, calls and Search Console feeds separately.
               </span>
             </li>
             <li>
