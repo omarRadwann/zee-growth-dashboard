@@ -4,6 +4,12 @@ import { flushSync } from 'react-dom';
 import ReportExplorer from './report-explorer';
 import DataHealth from './data-health';
 import {
+  mergeSnapshot,
+  availableSources,
+  missingViewSources,
+  SOURCE_LABELS,
+} from '@/lib/snapshot-import.mjs';
+import {
   safeProgress,
   reviewInsights,
   latestWindow,
@@ -491,27 +497,29 @@ export default function Dashboard() {
     try {
       if (chosen.size > 12 * 1024 * 1024)
         throw new Error('Use a reporting export smaller than 12 MB.');
-      const parsed = validateData(JSON.parse(await chosen.text()));
-      disconnect();
+      if (bridge.current && !bridge.current.closed)
+        throw new Error(
+          'A connection window is open. Close that window before loading manual snapshots; the connection was not stopped.',
+        );
+      const hadData = availableSources(data).length > 0;
+      const { data: parsed, sources: loaded } = mergeSnapshot(
+        data,
+        JSON.parse(await chosen.text()),
+        mode,
+      );
       setData(parsed);
       setMode(parsed.environment === 'example' ? 'example' : 'import');
-      if (
-        parsed.sources.seo.status === 'connected' &&
-        !parsed.ads.length &&
-        !parsed.commerce.length
-      )
-        go('seo');
       const dates = SOURCES.map((s) => parsed.sources[s]?.to)
         .filter((date): date is string => Boolean(date))
         .sort();
-      if (dates.length)
+      if (dates.length && !hadData)
         setEnd(
           dates[dates.length - 1] < day()
             ? dates[dates.length - 1]
             : shift(day(), -1),
         );
       setNotice(
-        'Snapshot loaded in this tab only. It was not uploaded or saved to GitHub.',
+        `Loaded ${loaded.map((key) => SOURCE_LABELS[key as keyof typeof SOURCE_LABELS]).join(', ')}. Your current tab was kept${hadData ? ', and other source groups were preserved' : ''}. This is a private snapshot, not an automatic update.`,
       );
     } catch (e) {
       setNotice('Import stopped: ' + (e as Error).message);
@@ -1039,6 +1047,52 @@ export default function Dashboard() {
               </div>
             )}
           </section>
+          {mode === 'import' && (
+            <section
+              className="connection-strip"
+              aria-label="Snapshot contents"
+            >
+              <div>
+                <strong>
+                  Available in your snapshots:{' '}
+                  {availableSources(data)
+                    .map((key) => SOURCE_NAMES[key])
+                    .join(', ')}
+                </strong>
+                <p>
+                  {missingViewSources(data, view).length
+                    ? `This tab still needs ${missingViewSources(data, view)
+                        .map(
+                          (key) =>
+                            SOURCE_LABELS[key as keyof typeof SOURCE_LABELS],
+                        )
+                        .join(
+                          ' and ',
+                        )}. Search Console clicks and impressions are not store sales or enquiries.`
+                    : 'Snapshot files only supply the source groups they contain. Loading a file does not change tabs or create data for other sources.'}
+                </p>
+              </div>
+              <div className="inline-actions">
+                {data.sources.seo.status === 'connected' && view !== 'seo' && (
+                  <Button variant="outline" onClick={() => go('seo')}>
+                    View organic search <ArrowRight />
+                  </Button>
+                )}
+                {data.sources.woo.status === 'connected' &&
+                  view !== 'activity' && (
+                    <Button variant="outline" onClick={() => go('activity')}>
+                      View store results <ArrowRight />
+                    </Button>
+                  )}
+                {data.sources.ads.status === 'connected' &&
+                  view !== 'campaigns' && (
+                    <Button variant="outline" onClick={() => go('campaigns')}>
+                      View Google Ads <ArrowRight />
+                    </Button>
+                  )}
+              </div>
+            </section>
+          )}
           {!['connections', 'changes', 'guide', 'explore'].includes(view) && (
             <div className="filterbar">
               <div className="filters">
