@@ -35,6 +35,10 @@ try {
     !html.includes('REPLACE_INSIDE_GOOGLE_ADS_ONLY'),
     'Server-only setup must not enter the UI bundle',
   );
+  assert.ok(html.includes('Performance overview'));
+  assert.ok(html.includes('See what is changing'));
+  assert.ok(html.includes('Missing data is never shown as zero'));
+  assert.ok(!html.includes('REPORTING_ACCESS_TOKEN'));
   const { default: Health } = await server.ssrLoadModule(
     '/app/data-health.tsx',
   );

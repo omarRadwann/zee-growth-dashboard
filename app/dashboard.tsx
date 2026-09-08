@@ -3,6 +3,8 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { flushSync } from 'react-dom';
 import ReportExplorer from './report-explorer';
 import DataHealth from './data-health';
+import PerformanceLens from './performance-lens';
+import DirectConnection from './direct-connection';
 import {
   mergeSnapshot,
   availableSources,
@@ -263,7 +265,7 @@ function TableWrap({ children }: { children: React.ReactNode }) {
 
 export default function Dashboard() {
   const [clearGeneration, setClearGeneration] = useState(0);
-  const [view, setView] = useState<View>('explore');
+  const [view, setView] = useState<View>('overview');
   const [data, setData] = useState<Data>(emptyData);
   const [mode, setMode] = useState<'empty' | 'example' | 'import' | 'bridge'>(
     'empty',
@@ -938,7 +940,7 @@ export default function Dashboard() {
               <span className="eyebrow">ZEE GROWTH WORKSPACE</span>
               <h1>
                 {view === 'overview'
-                  ? 'A clearer picture of growth.'
+                  ? 'Performance overview'
                   : navTitle}
               </h1>
               <p>
@@ -1152,7 +1154,7 @@ export default function Dashboard() {
               onConnect={() => setConnectionOpen(true)}
             />
           </div>
-          {['overview', 'compare', 'connections'].includes(view) && (
+          {['compare', 'connections'].includes(view) && (
             <DataHealth
               data={data}
               mode={mode}
@@ -1235,7 +1237,7 @@ export default function Dashboard() {
               </div>
               {metricCards}
               <div className="main-grid">
-                {trendChart}
+                <PerformanceLens data={data} from={period.from} to={period.to} beforeFrom={period.beforeFrom} campaign={campaign} onConnect={() => setView('connections')} />
                 <section className="panel outcomes">
                   <div className="panel-heading">
                     <div>
@@ -1920,6 +1922,14 @@ export default function Dashboard() {
               )}
             </section>
           )}
+          <div hidden={view !== 'connections'}>
+            <DirectConnection key={clearGeneration} from={period.beforeFrom} to={period.to} onSnapshot={snapshot => {
+              if (mode === 'bridge') throw Error('Stop the WordPress connection before using the direct API.');
+              const merged = mergeSnapshot(data, snapshot, mode);
+              flushSync(() => { setData(merged.data); setMode('import'); });
+              setNotice('Direct Google report received. Refresh is managed in Data connections; source timestamps show data age.');
+            }} />
+          </div>
           {view === 'connections' && (
             <>
               <div className="connection-hero">

@@ -2,6 +2,10 @@
 
 The reporting website for `omarRadwann/zee-growth-dashboard`.
 
+## Direct API update — September 2026
+
+The React interface includes a direct Google API connection panel and a separate Node backend. See [backend setup and exact remaining blockers](backend/README.md). Google sign-in, allowlisted reporting access, cached API reads and browser refresh are implemented and tested with mocks, but hosting and live credentials are not configured. The older setup notes below describe the previous connector route; they are not evidence of current live connectivity or production installation state.
+
 ## What works now
 
 - Responsive dashboard: overview, Google Ads campaigns, before/after, sales and enquiries, organic search, source freshness, and a change journal.
