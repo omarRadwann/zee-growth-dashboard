@@ -1,5 +1,9 @@
 # ZEE Growth
 
+## Analytics Studio rebuild
+
+The new [Analytics Studio](studio/README.md) is a separate React dashboard and private Node reporting service. It reads Google Search Console, GA4 and Google Ads independently using server-side credentials. The existing Pages build and reporting connectors remain in place during review.
+
 The reporting website for `omarRadwann/zee-growth-dashboard`.
 
 ## Direct API update — September 2026
