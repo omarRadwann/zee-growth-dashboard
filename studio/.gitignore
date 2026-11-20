@@ -1,0 +1,11 @@
+/node_modules/
+/dist/
+/.env*
+!/.env.example
+*.pem
+*service-account*.json
+*zee-official-489812*.json
+*client_secret*.json
+*desktop-oauth-client*.json
+*.token
+*.log

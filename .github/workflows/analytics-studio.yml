@@ -1,0 +1,28 @@
+name: Analytics Studio checks
+
+on:
+  pull_request:
+    paths: ['studio/**', '.github/workflows/analytics-studio.yml']
+  push:
+    paths: ['studio/**', '.github/workflows/analytics-studio.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: studio
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: studio/package-lock.json
+      - run: npm ci --ignore-scripts
+      - run: npm test
+      - run: npm run typecheck
+      - run: npm run build
