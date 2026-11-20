@@ -20,7 +20,7 @@ function parseKey(value) {
       !/^-----BEGIN PRIVATE KEY-----/.test(key.private_key ?? '')) throw new GoogleError('CREDENTIAL_INVALID', 503);
   return key;
 }
-async function decode(response) {
+export async function decodeGoogle(response) {
   const data = await response.json().catch(() => null);
   if (!response.ok) {
     const adsCode = data?.error?.details?.flatMap(d => d.errors ?? []).map(e => Object.values(e.errorCode ?? {})[0]).find(safeCode);
@@ -30,7 +30,7 @@ async function decode(response) {
   if (!data) throw new GoogleError('GOOGLE_INVALID_RESPONSE', 502);
   return data;
 }
-function timed(fetcher, url, init) {
+export function timedGoogle(fetcher, url, init) {
   return fetcher(url, { ...init, signal: AbortSignal.timeout(16000) }).catch(() => { throw new GoogleError('GOOGLE_NETWORK_OR_TIMEOUT', 502); });
 }
 export function createGoogle(rawKey, fetcher = fetch) {
@@ -47,7 +47,7 @@ export function createGoogle(rawKey, fetcher = fetch) {
     try { signature = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', await signingKey, encoder.encode(unsigned)); }
     catch { throw new GoogleError('CREDENTIAL_INVALID', 503); }
     const params = new URLSearchParams({ grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer', assertion: `${unsigned}.${base64url(new Uint8Array(signature))}` });
-    const response = await decode(await timed(fetcher, oauth, { method: 'POST', body: params }));
+    const response = await decodeGoogle(await timedGoogle(fetcher, oauth, { method: 'POST', body: params }));
     if (!response.access_token) throw new GoogleError('GOOGLE_TOKEN_MISSING', 502);
     return response.access_token;
   }
@@ -69,8 +69,8 @@ export function createGoogle(rawKey, fetcher = fetch) {
     const headers = { Authorization: `Bearer ${await token(scope)}` };
     if (body) headers['Content-Type'] = 'application/json';
     if (service === 'ads' && manager) headers['login-customer-id'] = manager;
-    const response = await timed(fetcher, roots[service] + path, { headers, method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined });
+    const response = await timedGoogle(fetcher, roots[service] + path, { headers, method: body ? 'POST' : 'GET', body: body ? JSON.stringify(body) : undefined });
     if (response.status === 401) tokenCache.delete(scope);
-    return decode(response);
+    return decodeGoogle(response);
   };
 }

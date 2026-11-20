@@ -1,11 +1,21 @@
 import { createGoogle, GoogleError } from './google.mjs';
 import { createReporting, reportDates } from './reporting.mjs';
+import { createUserAds } from './ads-oauth.mjs';
 
 const safeHeaders = { 'Cache-Control':'private, no-store', 'X-Content-Type-Options':'nosniff', 'X-Robots-Tag':'noindex, nofollow' };
 const send = (body,status=200) => Response.json(body,{status,headers:safeHeaders});
 const connected = ['gsc','ga','ads'];
 const aliases = {
   NOT_ADS_USER:'Google Ads does not recognize this service account for the configured customer. Have an Ads administrator verify read-only access under Admin → Access and security → Users.',
+  ADS_SIGNED_IN_USER_NO_ACCESS:'The signed-in Google user cannot access this Ads customer. Check the account selected at consent and any manager routing.',
+  ADS_OAUTH_CLIENT_REQUIRED:'Personal Google Ads sign-in needs a Google Cloud Desktop OAuth client. The service-account key is not an OAuth client file.',
+  ADS_OAUTH_CLIENT_INVALID:'Configure a valid Desktop OAuth client JSON and keep it outside the source repository.',
+  ADS_OAUTH_CONSENT_REQUIRED:'The Desktop OAuth client is configured but your Google account has not authorized the dashboard yet. Run the local Ads authorization command.',
+  ADS_OAUTH_TOKEN_FILE_UNREADABLE:'The local Ads authorization file cannot be read by this server.',
+  ADS_OAUTH_TOKEN_INVALID:'The local Ads authorization is invalid. Reauthorize with your Google account.',
+  ADS_OAUTH_SCOPE_REQUIRED:'Google did not grant the Google Ads API scope. Review the consent and authorize again if appropriate.',
+  invalid_grant:'Google rejected the stored authorization. It may have expired or been revoked; authorize with Google again.',
+  invalid_client:'Google rejected the configured OAuth client. Verify the desktop client configuration.',
   USER_PERMISSION_DENIED:'The service account cannot access the configured Ads customer. Check direct access or the manager account routing.',
   CLOUD_PROJECT_NOT_APPROVED_FOR_PRODUCTION:'The Google Cloud project needs production Ads API access (Explorer, Basic or Standard).',
   SERVICE_DISABLED:'The matching Google API is disabled for this project.',
@@ -20,7 +30,7 @@ const aliases = {
 };
 const reportFailure = e => {
   const code = e instanceof GoogleError ? e.code : 'REPORT_FAILED';
-  return {status:code==='CREDENTIAL_NOT_CONFIGURED'?'setup':'error',code,message:aliases[code]??'The report is unavailable. Verify source access and retry.'};
+  return {status:['CREDENTIAL_NOT_CONFIGURED','ADS_OAUTH_CLIENT_REQUIRED','ADS_OAUTH_CONSENT_REQUIRED'].includes(code)?'setup':'error',code,message:aliases[code]??'The report is unavailable. Verify source access and retry.'};
 };
 
 export function createHttp(env, { local = false, request: injected, clock = Date.now } = {}) {
@@ -28,7 +38,18 @@ export function createHttp(env, { local = false, request: injected, clock = Date
   const cache = new Map();
   const hits = new Map();
   let reporting;
-  const getReporting = () => reporting ??= createReporting(injected ?? createGoogle(env.GOOGLE_SERVICE_ACCOUNT_JSON),env);
+  let serviceAccount;
+  const useAdsUser=env.GOOGLE_ADS_AUTH==='user';
+  const userAds=useAdsUser?createUserAds(env):undefined;
+  async function dispatch(service, path, body, manager) {
+    if(service==='ads'&&userAds){
+      try {return await userAds(service,path,body,manager);}
+      catch(e){if(e.code==='NOT_ADS_USER'||e.code==='USER_PERMISSION_DENIED')throw new GoogleError('ADS_SIGNED_IN_USER_NO_ACCESS',e.status);throw e;}
+    }
+    serviceAccount??=createGoogle(env.GOOGLE_SERVICE_ACCOUNT_JSON);
+    return serviceAccount(service,path,body,manager);
+  }
+  const getReporting = () => reporting ??= createReporting(injected ?? dispatch,env);
   async function read(key,fn,force,lifetime=ttl) {
     const found=cache.get(key);
     const time=clock();

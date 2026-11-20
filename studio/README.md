@@ -28,6 +28,32 @@ Open http://127.0.0.1:4173/. Only the local machine can reach this server unless
 
 The service account must be granted access on each correct Google property. Have a Google Ads administrator open **Admin → Access and security → Users** in customer `206-762-3227` and verify direct read-only access for the service account, or confirm the manager account and supply its ID. See [Google’s service-account access instructions](https://developers.google.com/google-ads/api/docs/oauth/service-accounts). If Ads next reports that the Cloud project is not approved for production, enable the appropriate API access level in the Google Cloud project. Do not request a legacy developer token. No campaign, billing, checkout, or WordPress writes are implemented.
 
+### Alternative: Use your own Ads login
+
+Use this option without adding the existing service account to Ads. The Google login must already have access to the intended Ads customer. Search Console and GA4 continue using their independent service-account configuration.
+
+1. In the appropriate Google Cloud project, use a **Desktop app OAuth client** with Google Ads API enabled and production API access approved. Make sure the app's consent settings allow your Google account. A service-account key and its numeric OAuth ID are not a Desktop app client. See [Google Ads project setup](https://developers.google.com/google-ads/api/docs/oauth/cloud-project), [desktop authorization](https://developers.google.com/identity/protocols/oauth2/native-app), and [current Ads API access levels](https://developers.google.com/google-ads/api/docs/api-policy/developer-token).
+2. Download the Desktop OAuth client JSON directly into a private user folder outside the repository. Choose a new private token file path; do not place either value in chat, GitHub, browser storage, shared folders or synced public storage.
+3. From `studio/`, run:
+
+```powershell
+$env:GOOGLE_ADS_DESKTOP_CLIENT_FILE = 'C:/private/desktop-oauth-client.json'
+$env:GOOGLE_ADS_REFRESH_TOKEN_FILE = 'C:/private/zee-ads-refresh.token'
+$env:GOOGLE_ADS_CUSTOMER_ID = '2067623227'
+# Set GOOGLE_ADS_MANAGER_ID only if you access this customer through a manager.
+node server/authorize-ads.mjs
+```
+
+Open the displayed URL on Google's own sign-in page and select the correct account. The command prints no access or refresh tokens. It checks the exact customer before saving a refresh token, refuses to overwrite an existing file, and keeps the browser callback on loopback. Protect this file with OS file permissions. The Google Ads API uses the `adwords` scope; Studio calls only the Ads Search reporting endpoint, regardless of what Google otherwise authorizes for that login. Use a read-only Ads user if available. If Google Cloud consent is in Testing, access may expire and need renewed consent.
+
+```powershell
+$env:GOOGLE_ADS_AUTH = 'user'
+npm start
+node server/probe.mjs   # optionally run separately, with the same configuration
+```
+
+For an owner-managed private host, configure `GOOGLE_ADS_AUTH=user` and supply the Ads OAuth client ID, client secret and refresh token as `GOOGLE_ADS_OAUTH_CLIENT_ID`, `GOOGLE_ADS_OAUTH_CLIENT_SECRET` and `GOOGLE_ADS_OAUTH_REFRESH_TOKEN` through that host's runtime secret store. Do not copy a personal grant to a shared host without the account owner's agreement. Set `GOOGLE_ADS_AUTH` back to its default to return to the previous service-account path. No browser sign-in cookie is reused.
+
 ## Use the reporting controls
 
 - **Organic Search:** choose search type, country, device, URL language or a known-brand segment. Apply literal query and URL text filters independently. See query, page, device, country and Search Appearance tables. Brand matching is a heuristic. Query filters exclude anonymized queries, and page filters can change the aggregation level.
